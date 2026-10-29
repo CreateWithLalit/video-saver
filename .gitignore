@@ -3,3 +3,7 @@ Downloads/
 __pycache__/
 cookies.txt
 archive.txt
+backend/.env
+frontend/node_modules/
+frontend/.next/
+frontend/out/
