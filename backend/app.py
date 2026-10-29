@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import logging
 import mimetypes
 import os
 import secrets
@@ -12,6 +13,7 @@ import sys
 import threading
 import time
 import uuid
+import subprocess
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -43,6 +45,16 @@ ALLOWED_HOSTS = {
 QUALITY_VALUES = {"best", "1080", "720", "480", "360"}
 SESSION_SECONDS = 12 * 60 * 60
 COOKIE_NAME = "video_saver_session"
+LOG_FILE = Path(__file__).with_name("video-saver.log")
+
+logger = logging.getLogger("video_saver")
+if not logger.handlers:
+    from logging.handlers import RotatingFileHandler
+
+    logger.setLevel(logging.INFO)
+    handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
 
 
 def load_env() -> dict[str, str]:
@@ -105,6 +117,7 @@ def progress_payload(stage: str, percent: float, message: str, **metrics: Any) -
 jobs: dict[str, Job] = {}
 jobs_lock = threading.RLock()
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="video-saver")
+accepting_jobs = True
 sessions: dict[str, float] = {}
 sessions_lock = threading.Lock()
 login_attempts: dict[str, deque[float]] = defaultdict(deque)
@@ -173,9 +186,23 @@ def update_job(job_id: str, stage: str, percent: float, message: str, **metrics:
         job.progress = progress_payload(stage, max(old_percent, min(percent, 99)), message, **metrics)
         job.status = stage
         job.updated_at = now()
+    logger.info("job=%s stage=%s percent=%s", job_id, stage, percent)
+
+
+def verify_media(path: Path) -> None:
+    """Reject empty or unreadable completed output before reporting success."""
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError("The downloader did not produce a usable output file.")
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1", str(path)],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("The completed media file could not be verified by ffprobe.")
 
 
 def download_worker(job_id: str) -> None:
+    logger.info("job=%s worker started", job_id)
     with jobs_lock:
         job = jobs[job_id]
         job.site = detect_site(job.url)
@@ -228,12 +255,14 @@ def download_worker(job_id: str) -> None:
         if not created:
             raise RuntimeError("No new output file was created (it may already be in the download archive).")
         output = max(created, key=lambda path: path.stat().st_mtime).resolve()
+        verify_media(output)
         with jobs_lock:
             job = jobs[job_id]
             job.output_path = output
             job.status = "done"
             job.progress = progress_payload("done", 100, "Download complete")
             job.updated_at = now()
+        logger.info("job=%s completed", job_id)
     except Exception as exc:
         with jobs_lock:
             job = jobs[job_id]
@@ -241,9 +270,29 @@ def download_worker(job_id: str) -> None:
             job.error = friendly_error(exc)
             job.progress = progress_payload("error", float(job.progress.get("percent") or 0), job.error)
             job.updated_at = now()
+        logger.exception("job=%s failed: %s", job_id, type(exc).__name__)
 
 
 app = FastAPI(title="Video Saver", docs_url=None, redoc_url=None)
+
+
+@app.on_event("startup")
+def startup() -> None:
+    logger.info("backend started")
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    global accepting_jobs
+    accepting_jobs = False
+    logger.info("backend stopping; no new jobs will be accepted")
+    executor.shutdown(wait=False, cancel_futures=False)
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    """Unauthenticated liveness endpoint with no sensitive configuration data."""
+    return {"status": "ok"}
 
 
 @app.post("/api/login")
@@ -297,12 +346,20 @@ def info(payload: InfoRequest, _: str = Depends(require_session)) -> dict[str, A
 
 @app.post("/api/jobs")
 def create_job(payload: JobRequest, _: str = Depends(require_session)) -> dict[str, str]:
+    if not accepting_jobs:
+        raise HTTPException(503, "The server is shutting down; retry after it restarts.")
     url = validate_url(payload.url)
     if payload.quality not in QUALITY_VALUES:
         raise HTTPException(400, "Quality must be best, 1080, 720, 480, or 360.")
     job = Job(id=uuid.uuid4().hex, url=url, quality=payload.quality, audio_only=payload.audio_only, site=detect_site(url))
     with jobs_lock:
+        for existing in jobs.values():
+            if (existing.url == url and existing.quality == payload.quality
+                    and existing.audio_only == payload.audio_only
+                    and existing.status in {"queued", "fetching", "downloading", "merging"}):
+                return {"job_id": existing.id}
         jobs[job.id] = job
+    logger.info("job=%s created site=%s audio_only=%s", job.id, job.site, job.audio_only)
     executor.submit(download_worker, job.id)
     return {"job_id": job.id}
 

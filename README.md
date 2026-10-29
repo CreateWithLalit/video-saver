@@ -117,3 +117,9 @@ If Windows asks, allow Python and Node.js through Windows Firewall on **private*
 For Instagram metadata or downloads, the web app uses the same project-root `cookies.txt` file when present. Never share or commit it. For private remote access beyond your Wi-Fi, a tool such as Tailscale can provide a private network; it is not configured by this project.
 
 For development, `run.ps1` runs `npm run dev`. For a production-style local frontend, run `cd frontend; npm run build; npm run start -- --hostname 0.0.0.0 --port 3000` while running the backend command printed in `run.ps1` separately.
+
+### Web app health and troubleshooting
+
+After startup, `http://127.0.0.1:8000/api/health` returns `{"status":"ok"}` when the backend is live. `run.ps1` checks both services before reporting success and leaves their PowerShell windows open so startup errors remain visible. Backend diagnostic logs are rotated at `backend/video-saver.log` and never include passwords, session tokens, or cookie contents.
+
+The local app keeps completed-job history only in memory. Restarting the backend clears that history, although downloaded files remain in `Downloads/`. The phone URL is ordinary LAN HTTP and is not encrypted; use it only on a trusted private network. Do not expose the app to the public internet. HTTPS requires setting `SESSION_COOKIE_SECURE=true` only after HTTPS is properly configured.
