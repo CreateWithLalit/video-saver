@@ -1,6 +1,6 @@
 # Video Downloader
 
-A personal video downloader using **yt-dlp** and **ffmpeg** that saves YouTube videos and Instagram Reels in the highest available quality to local storage.
+A personal video downloader using **yt-dlp** and **ffmpeg** that saves YouTube videos, Instagram Reels, and Instagram Stories in the highest available quality to local storage.
 
 ## Requirements
 
@@ -42,6 +42,9 @@ python downloader.py --cookies chrome https://www.instagram.com/reel/xyz/
 # Download an Instagram Reel using an exported cookies.txt file (recommended on Windows)
 python downloader.py --cookies-file cookies.txt https://www.instagram.com/reel/xyz/
 
+# Download an Instagram Story using an account authorized to view it
+python downloader.py --cookies-file cookies.txt https://www.instagram.com/stories/USERNAME/STORY_ID/
+
 # Download an entire YouTube playlist
 python downloader.py https://www.youtube.com/playlist?list=PLxxxxxxxx
 ```
@@ -55,7 +58,28 @@ python downloader.py https://www.youtube.com/playlist?list=PLxxxxxxxx
 | `--cookies BROWSER` | Read cookies from a browser (`chrome`, `edge`, `firefox`) — needed for Instagram |
 | `--cookies-file PATH` | Use a Netscape-format `cookies.txt` file for login cookies |
 
-## Instagram reels: how to use cookies.txt
+## Instagram Reels and Stories: how to use cookies.txt
+
+### Instagram Stories
+
+The web app and CLI pass the existing project-root cookies.txt directly to the official yt-dlp extractor. They never read, display, log, send, or commit its contents. The web app only checks whether the file exists before supplying its path to yt-dlp.
+
+Supported Story URL forms in the installed official yt-dlp 2026.10.26 extractor are:
+
+~~~text
+https://www.instagram.com/stories/USERNAME/STORY_ID/
+https://www.instagram.com/stories/USERNAME/
+~~~
+
+The individual URL is treated as one Story. The account Stories URL may be returned by yt-dlp as a collection; Video Saver tracks every produced item, keeps the files in Downloads/Instagram/, and shows a separate save action for each image or video.
+
+Private Stories work only when the Instagram account represented by cookies.txt is already authorized to view them, such as an approved follower of that private account. Video Saver does not bypass private-account rules, account blocks, sign-in requirements, or any other Instagram access control. If the cookie file is missing, expired, invalid, or belongs to an account without permission, refresh it from the authorized account and try again. Stories that have expired or been deleted cannot be recovered.
+
+#### Current upstream limitation
+
+Story extraction changes frequently. The installed version is the latest official stable release checked during this work (yt-dlp 2026.10.26), and its included InstagramStoryIE recognizes both URL forms above. However, live Story downloads were **not** performed for this project, and open official yt-dlp reports document a current regression where Instagram's Story API can return an HTTP 500 and yt-dlp reports that login is required even with valid browser cookies. See [yt-dlp issue #17918](https://github.com/yt-dlp/yt-dlp/issues/17918) and its duplicate [issue #17755](https://github.com/yt-dlp/yt-dlp/issues/17755).
+
+This app safely surfaces that upstream failure; it does not claim a private Story is accessible or use an unofficial fork, API scraper, alternate account, or authentication bypass. Keep the official package current with the update command in this README, then verify a Story manually with an Instagram account you are authorized to use. Existing Reel support does not prove that Story extraction works.
 
 Browser cookie reading from Chrome can fail on Windows because of Chrome's cookie encryption. Using an exported Netscape-format `cookies.txt` file is the more reliable option.
 
@@ -122,3 +146,4 @@ For development, `run.ps1` runs `npm run dev`. For a production-style local fron
 After startup, `http://127.0.0.1:8000/api/health` returns `{"status":"ok"}` when the backend is live. `run.ps1` checks both services before reporting success and leaves their PowerShell windows open so startup errors remain visible. Backend diagnostic logs are rotated at `backend/video-saver.log` and never include passwords, session tokens, or cookie contents.
 
 The local app keeps completed-job history only in memory. Restarting the backend clears that history, although downloaded files remain in `Downloads/`. The phone URL is ordinary LAN HTTP and is not encrypted; use it only on a trusted private network. Do not expose the app to the public internet.
+# video-saver
