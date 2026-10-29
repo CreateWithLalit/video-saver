@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import logging
 import mimetypes
-import os
-import secrets
 import sys
 import threading
-import time
 import uuid
 import subprocess
-from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -22,9 +17,9 @@ from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import quote, urlparse
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -37,14 +32,11 @@ from downloader import (  # noqa: E402
 )
 import yt_dlp  # noqa: E402
 
-ENV_FILE = Path(__file__).with_name(".env")
 ALLOWED_HOSTS = {
     "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
     "youtu.be", "instagram.com", "www.instagram.com",
 }
 QUALITY_VALUES = {"best", "1080", "720", "480", "360"}
-SESSION_SECONDS = 12 * 60 * 60
-COOKIE_NAME = "video_saver_session"
 LOG_FILE = Path(__file__).with_name("video-saver.log")
 
 logger = logging.getLogger("video_saver")
@@ -55,26 +47,6 @@ if not logger.handlers:
     handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
-
-
-def load_env() -> dict[str, str]:
-    """Read the small local .env file without a third-party dependency."""
-    values = dict(os.environ)
-    if ENV_FILE.is_file():
-        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-            if line and not line.lstrip().startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                values.setdefault(key.strip(), value.strip())
-    return values
-
-
-CONFIG = load_env()
-APP_PASSWORD = CONFIG.get("APP_PASSWORD", "")
-if not APP_PASSWORD or APP_PASSWORD == "replace-with-a-strong-password":
-    raise RuntimeError(
-        "APP_PASSWORD is missing. Copy backend/.env.example to backend/.env and set it."
-    )
-COOKIE_SECURE = CONFIG.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
 
 def now() -> str:
@@ -118,33 +90,6 @@ jobs: dict[str, Job] = {}
 jobs_lock = threading.RLock()
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="video-saver")
 accepting_jobs = True
-sessions: dict[str, float] = {}
-sessions_lock = threading.Lock()
-login_attempts: dict[str, deque[float]] = defaultdict(deque)
-login_lock = threading.Lock()
-
-
-def client_ip(request: Request) -> str:
-    # The backend is bound to loopback behind the Next.js rewrite. Forwarded headers
-    # are deliberately ignored because arbitrary clients can forge them.
-    return request.client.host if request.client else "unknown"
-
-
-def require_session(session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str:
-    if not session:
-        raise HTTPException(401, "Sign in to continue.")
-    with sessions_lock:
-        expiry = sessions.get(session)
-        if expiry is None or expiry <= time.time():
-            sessions.pop(session, None)
-            raise HTTPException(401, "Your session has expired. Sign in again.")
-    return session
-
-
-class LoginRequest(BaseModel):
-    password: str = Field(min_length=1, max_length=1024)
-
-
 class InfoRequest(BaseModel):
     url: str
 
@@ -295,43 +240,8 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/login")
-def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, bool]:
-    ip = client_ip(request)
-    current = time.time()
-    with login_lock:
-        attempts = login_attempts[ip]
-        while attempts and attempts[0] <= current - 60:
-            attempts.popleft()
-        if len(attempts) >= 5:
-            raise HTTPException(429, "Too many failed attempts. Try again in a minute.")
-        if not hmac.compare_digest(payload.password, APP_PASSWORD):
-            attempts.append(current)
-            raise HTTPException(401, "Incorrect password.")
-        attempts.clear()
-    token = secrets.token_urlsafe(32)
-    with sessions_lock:
-        sessions[token] = current + SESSION_SECONDS
-    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax", secure=COOKIE_SECURE,
-                        max_age=SESSION_SECONDS, path="/")
-    return {"ok": True}
-
-
-@app.post("/api/logout")
-def logout(response: Response, session: str = Depends(require_session)) -> dict[str, bool]:
-    with sessions_lock:
-        sessions.pop(session, None)
-    response.delete_cookie(COOKIE_NAME, path="/")
-    return {"ok": True}
-
-
-@app.get("/api/me")
-def me(_: str = Depends(require_session)) -> dict[str, bool]:
-    return {"authenticated": True}
-
-
 @app.post("/api/info")
-def info(payload: InfoRequest, _: str = Depends(require_session)) -> dict[str, Any]:
+def info(payload: InfoRequest) -> dict[str, Any]:
     url = validate_url(payload.url)
     try:
         with yt_dlp.YoutubeDL(metadata_options()) as ydl:
@@ -345,7 +255,7 @@ def info(payload: InfoRequest, _: str = Depends(require_session)) -> dict[str, A
 
 
 @app.post("/api/jobs")
-def create_job(payload: JobRequest, _: str = Depends(require_session)) -> dict[str, str]:
+def create_job(payload: JobRequest) -> dict[str, str]:
     if not accepting_jobs:
         raise HTTPException(503, "The server is shutting down; retry after it restarts.")
     url = validate_url(payload.url)
@@ -365,7 +275,7 @@ def create_job(payload: JobRequest, _: str = Depends(require_session)) -> dict[s
 
 
 @app.get("/api/jobs")
-def list_jobs(_: str = Depends(require_session)) -> list[dict[str, Any]]:
+def list_jobs() -> list[dict[str, Any]]:
     with jobs_lock:
         recent = sorted(jobs.values(), key=lambda item: item.created_at, reverse=True)[:20]
         return [{"id": item.id, "title": item.title, "site": item.site, "status": item.status,
@@ -374,7 +284,7 @@ def list_jobs(_: str = Depends(require_session)) -> list[dict[str, Any]]:
 
 
 @app.get("/api/jobs/{job_id}/events")
-async def events(job_id: str, _: str = Depends(require_session)) -> StreamingResponse:
+async def events(job_id: str) -> StreamingResponse:
     if job_id not in jobs:
         raise HTTPException(404, "Job not found.")
     async def stream() -> Any:
@@ -395,7 +305,7 @@ async def events(job_id: str, _: str = Depends(require_session)) -> StreamingRes
 
 
 @app.get("/api/jobs/{job_id}/file")
-def file(job_id: str, _: str = Depends(require_session)) -> FileResponse:
+def file(job_id: str) -> FileResponse:
     with jobs_lock:
         job = jobs.get(job_id)
         if not job:

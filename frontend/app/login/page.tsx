@@ -1,5 +1,0 @@
-"use client";
-import { useState } from "react";
-import { LockKeyhole } from "lucide-react";
-import { api } from "../../lib/api";
-export default function Login(){const [password,setPassword]=useState("");const [error,setError]=useState("");const [busy,setBusy]=useState(false);const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError("");try{await api.login(password);location.href="/";}catch(err){setError(err instanceof Error?err.message:"Login failed");}finally{setBusy(false);}};return <main className="shell"><div className="wrap" style={{maxWidth:430,marginTop:"12vh"}}><form className="glass card" onSubmit={submit}><p className="muted"><LockKeyhole size={18}/> PRIVATE LOCAL APP</p><h1>Video Saver</h1><p className="muted">Sign in to manage downloads on this PC.</p><label htmlFor="password">Password</label><input id="password" className="input" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/>{error?<p role="alert">{error}</p>:null}<button className="btn" disabled={busy} style={{marginTop:16,width:"100%"}}>{busy?"Signing in…":"Sign in"}</button></form></div></main>}

@@ -9,7 +9,6 @@ $frontendModules = Join-Path $frontend "node_modules"
 if (-not (Test-Path -LiteralPath $python)) { throw "Existing virtual environment Python was not found: $python" }
 if (-not (Test-Path -LiteralPath $backendApp)) { throw "Backend application was not found: $backendApp" }
 if (-not (Test-Path -LiteralPath $frontendPackage)) { throw "Frontend package.json was not found: $frontendPackage" }
-if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "backend\.env"))) { throw "Missing backend\.env. Copy backend\.env.example to backend\.env and set APP_PASSWORD." }
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "npm was not found. Install Node.js LTS, then retry." }
 if (-not (Test-Path -LiteralPath $frontendModules)) {
     Write-Host "Installing missing frontend dependencies..."
