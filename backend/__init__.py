@@ -1,1 +1,0 @@
-"""Video Saver FastAPI backend."""

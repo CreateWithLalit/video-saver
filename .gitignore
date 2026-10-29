@@ -1,11 +1,13 @@
+node_modules/
+dist/
+downloads/
+.env
+*.log
+.DS_Store
+
+# Legacy
 venv/
 Downloads/
 __pycache__/
 cookies.txt
 archive.txt
-backend/.env
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/*.tsbuildinfo
-backend/video-saver.log*

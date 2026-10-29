@@ -1,5 +1,0 @@
-export type Info = { title:string; thumbnail:string|null; duration:number|null; uploader:string|null; site:string; available_heights:number[] };
-export type JobEvent = { stage:string; percent:number; speed:number|null; eta:number|null; downloaded_bytes:number|null; total_bytes:number|null; message:string };
-export type Job = { id:string; title:string; site:string; status:string; created_at:string; error:string|null; has_file:boolean };
-async function request<T>(path:string, init?:RequestInit):Promise<T>{ const res=await fetch(path,{...init,headers:{"Content-Type":"application/json",...(init?.headers??{})}}); if(!res.ok){const body=await res.json().catch(()=>({detail:"Request failed"}));throw new Error(body.detail??"Request failed");} return res.json() as Promise<T>; }
-export const api={ info:(url:string)=>request<Info>("/api/info",{method:"POST",body:JSON.stringify({url})}), createJob:(url:string,quality:string,audio_only:boolean)=>request<{job_id:string}>("/api/jobs",{method:"POST",body:JSON.stringify({url,quality,audio_only})}), jobs:()=>request<Job[]>("/api/jobs") };

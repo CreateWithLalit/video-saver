@@ -1,3 +1,0 @@
-"use client";
-import { ClipboardPaste, Search } from "lucide-react";
-export function UrlInput({value,onChange,onLoad,loading}:{value:string;onChange:(value:string)=>void;onLoad:()=>void;loading:boolean}){const paste=async()=>{try{onChange(await navigator.clipboard.readText());}catch{onChange("");}};return <div className="row"><input aria-label="Video URL" className="input" value={value} onChange={e=>onChange(e.target.value)} placeholder="Paste a YouTube or Instagram URL"/><button className="btn subtle" onClick={paste} aria-label="Paste URL"><ClipboardPaste size={19}/></button><button className="btn" onClick={onLoad} disabled={!value||loading}>{loading?"Loading…":<><Search size={18}/> Load</>}</button></div>}

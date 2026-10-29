@@ -1,0 +1,151 @@
+import { useEffect, useState } from 'react';
+import { Download, Music2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { api, type Info, type Job } from './lib/api';
+import { useJobEvents } from './hooks/useJobEvents';
+import { UrlInput } from './components/UrlInput';
+import { PreviewCard } from './components/PreviewCard';
+import { QualityPicker } from './components/QualityPicker';
+import { ProgressCard } from './components/ProgressCard';
+import { HistoryList } from './components/HistoryList';
+
+export default function App() {
+  const [url, setUrl] = useState('');
+  const [info, setInfo] = useState<Info | null>(null);
+  const [quality, setQuality] = useState('best');
+  const [audio, setAudio] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const event = useJobEvents(jobId);
+
+  const refresh = () =>
+    api
+      .jobs()
+      .then(setJobs)
+      .catch(() => {});
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    if (event?.stage === 'done' || event?.stage === 'error') {
+      refresh();
+    }
+  }, [event?.stage]);
+
+  const load = async () => {
+    if (!url.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api.info(url.trim());
+      setInfo(data);
+      setQuality('best');
+    } catch (e) {
+      setInfo(null);
+      setError(e instanceof Error ? e.message : 'Could not load video');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = async () => {
+    if (!url.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api.createJob(url.trim(), quality, audio);
+      setJobId(result.job_id);
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create job');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="shell">
+      <div className="wrap">
+        <header className="spaced">
+          <div>
+            <p className="muted">PRIVATE, LOCAL DOWNLOADS</p>
+            <h1 style={{ margin: '4px 0', fontSize: '2.4rem', fontWeight: 800 }}>
+              Video Saver
+            </h1>
+            <p className="muted">Save videos to your PC or current device.</p>
+          </div>
+        </header>
+
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass card"
+        >
+          <UrlInput
+            value={url}
+            onChange={(val) => {
+              setUrl(val);
+              if (error) setError('');
+            }}
+            onLoad={load}
+            loading={busy}
+          />
+          {error ? (
+            <p
+              role="alert"
+              style={{
+                color: '#f87171',
+                marginTop: '14px',
+                padding: '8px 12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              {error}
+            </p>
+          ) : null}
+        </motion.section>
+
+        {info ? (
+          <>
+            <PreviewCard info={info} />
+            <section className="glass card">
+              <h2>Choose format</h2>
+              <QualityPicker
+                heights={info.available_heights}
+                value={quality}
+                onChange={setQuality}
+                disabled={audio}
+              />
+              <label className="row" style={{ marginTop: 18, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={audio}
+                  onChange={(e) => setAudio(e.target.checked)}
+                />
+                <Music2 size={18} /> Audio only (MP3)
+              </label>
+              <button
+                className="btn"
+                style={{ marginTop: 18, width: '100%' }}
+                onClick={start}
+                disabled={busy}
+              >
+                <Download size={18} /> {busy ? 'Starting…' : 'Download'}
+              </button>
+            </section>
+          </>
+        ) : null}
+
+        {jobId ? <ProgressCard jobId={jobId} event={event} /> : null}
+
+        <HistoryList jobs={jobs} />
+      </div>
+    </main>
+  );
+}
