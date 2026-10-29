@@ -90,3 +90,30 @@ yt-dlp is updated frequently to keep up with site changes. Update it with:
 ```bash
 pip install --upgrade yt-dlp
 ```
+
+## Web App
+
+Video Saver includes an authenticated local web interface. Downloads still run on this PC and use the same `Downloads/` folders and `archive.txt`; when using a phone, use **Save to device** to transfer the actual completed file through the app.
+
+1. Install the backend into the existing virtual environment:
+
+   ```powershell
+   .\venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+   ```
+
+2. Install the frontend packages:
+
+   ```powershell
+   cd frontend
+   npm install
+   cd ..
+   ```
+
+3. Copy `backend/.env.example` to `backend/.env` and set a long, unique `APP_PASSWORD`. Do not commit this file.
+4. Start both services with `./run.ps1`, then open `http://localhost:3000`. The script prints the private-LAN URL for a phone on the same Wi-Fi network.
+
+If Windows asks, allow Python and Node.js through Windows Firewall on **private** networks only. The FastAPI server remains loopback-only; the Next.js server proxies `/api` requests. The browser session is an HttpOnly cookie that expires after 12 hours, and recent-job history is intentionally in memory, so it resets when the backend restarts.
+
+For Instagram metadata or downloads, the web app uses the same project-root `cookies.txt` file when present. Never share or commit it. For private remote access beyond your Wi-Fi, a tool such as Tailscale can provide a private network; it is not configured by this project.
+
+For development, `run.ps1` runs `npm run dev`. For a production-style local frontend, run `cd frontend; npm run build; npm run start -- --hostname 0.0.0.0 --port 3000` while running the backend command printed in `run.ps1` separately.
