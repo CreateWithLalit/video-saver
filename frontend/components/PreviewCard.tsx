@@ -1,0 +1,2 @@
+import type { Info } from "../lib/api";
+export function PreviewCard({info}:{info:Info}){return <article className="glass card">{info.thumbnail?<img className="thumb" src={info.thumbnail} alt=""/>:null}<p className="muted">{info.site}</p><h2>{info.title}</h2><p className="muted">{info.uploader??"Unknown uploader"} · {info.duration?`${Math.floor(info.duration/60)}:${String(info.duration%60).padStart(2,"0")}`:"Duration unknown"}</p></article>}

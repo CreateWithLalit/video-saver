@@ -1,0 +1,18 @@
+{
+  "name": "video-saver-frontend",
+  "private": true,
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start", "lint": "eslint ." },
+  "dependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "framer-motion": "latest",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest"
+  },
+  "devDependencies": { "eslint": "latest", "eslint-config-next": "latest" }
+}
