@@ -39,6 +39,9 @@ python downloader.py --audio URL
 # Download an Instagram Reel (requires browser cookies for login)
 python downloader.py --cookies chrome https://www.instagram.com/reel/xyz/
 
+# Download an Instagram Reel using an exported cookies.txt file (recommended on Windows)
+python downloader.py --cookies-file cookies.txt https://www.instagram.com/reel/xyz/
+
 # Download an entire YouTube playlist
 python downloader.py https://www.youtube.com/playlist?list=PLxxxxxxxx
 ```
@@ -50,6 +53,23 @@ python downloader.py https://www.youtube.com/playlist?list=PLxxxxxxxx
 | `--quality N` | Max video height in pixels (e.g. `1080`, `720`, `480`, `360`) |
 | `--audio` | Audio only, converted to MP3 at 320 kbps |
 | `--cookies BROWSER` | Read cookies from a browser (`chrome`, `edge`, `firefox`) — needed for Instagram |
+| `--cookies-file PATH` | Use a Netscape-format `cookies.txt` file for login cookies |
+
+## Instagram reels: how to use cookies.txt
+
+Browser cookie reading from Chrome can fail on Windows because of Chrome's cookie encryption. Using an exported Netscape-format `cookies.txt` file is the more reliable option.
+
+1. Install a browser extension that exports Netscape-format cookies, such as **Get cookies.txt LOCALLY**.
+2. Log in to [instagram.com](https://www.instagram.com/) in that browser.
+3. Use the extension to export the cookies.
+4. Save the export as `cookies.txt` in this project folder.
+5. Download the reel:
+
+   ```bash
+   python downloader.py "https://www.instagram.com/reel/xyz/" --cookies-file cookies.txt
+   ```
+
+`cookies.txt` is as sensitive as your Instagram login. Never share it or commit it to Git; it is already listed in `.gitignore`. Downloading thousands of reels may get your account flagged. Firefox cookie reading (`--cookies firefox`) can also work when Chrome does not.
 
 ### Where files are saved
 

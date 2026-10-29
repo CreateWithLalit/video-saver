@@ -9,6 +9,7 @@ Usage examples:
     python downloader.py --quality 720 URL
     python downloader.py --audio URL
     python downloader.py --cookies chrome https://www.instagram.com/reel/xyz/
+    python downloader.py --cookies-file cookies.txt https://www.instagram.com/reel/xyz/
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ def build_ydl_opts(
     max_height: int | None,
     audio_only: bool,
     cookies_browser: str | None,
+    cookies_file: Path | None,
 ) -> dict:
     """Build the yt-dlp options dict for a single URL."""
     site = detect_site(url)
@@ -88,7 +90,9 @@ def build_ydl_opts(
     else:
         opts["merge_output_format"] = "mp4"
 
-    if cookies_browser:
+    if cookies_file is not None:
+        opts["cookiefile"] = str(cookies_file)
+    elif cookies_browser:
         opts["cookiesfrombrowser"] = (cookies_browser,)
 
     return opts
@@ -109,6 +113,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "  python downloader.py --quality 720 URL\n"
             "  python downloader.py --audio URL\n"
             "  python downloader.py --cookies chrome https://instagram.com/reel/xyz/\n"
+            "  python downloader.py --cookies-file cookies.txt https://instagram.com/reel/xyz/\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -137,7 +142,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="BROWSER",
         help="read cookies from a browser (chrome, edge, firefox)",
     )
+    parser.add_argument(
+        "--cookies-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="use a Netscape-format cookies.txt file for login cookies",
+    )
     return parser.parse_args(argv)
+
+
+def warn_if_invalid_cookie_file(cookie_file: Path, *, needs_instagram: bool) -> None:
+    """Print non-blocking warnings for a cookie file that looks malformed."""
+    try:
+        lines = cookie_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        print(f"✗ Could not read cookies file: {cookie_file} — {exc}", file=sys.stderr)
+        return
+
+    cookie_lines = [line for line in lines if line and not line.startswith("#")]
+    if not any("\t" in line for line in cookie_lines):
+        print(
+            "Warning: the cookies file does not look like a Netscape-format cookies.txt "
+            "file. Export it with a cookies.txt browser extension.",
+            file=sys.stderr,
+        )
+    elif needs_instagram and not any("instagram.com" in line.lower() for line in cookie_lines):
+        print(
+            "Warning: the cookies file has no instagram.com entries. Log in to "
+            "instagram.com before exporting it as Netscape-format cookies.txt.",
+            file=sys.stderr,
+        )
 
 
 def download_url(url: str, *, args: argparse.Namespace) -> bool:
@@ -148,6 +183,7 @@ def download_url(url: str, *, args: argparse.Namespace) -> bool:
         max_height=args.quality,
         audio_only=args.audio,
         cookies_browser=args.cookies,
+        cookies_file=args.cookies_file,
     )
 
     try:
@@ -156,11 +192,23 @@ def download_url(url: str, *, args: argparse.Namespace) -> bool:
     except yt_dlp.utils.DownloadError as exc:
         print(f"\n✗ Failed: {url}  —  {exc}", file=sys.stderr)
         if site == "Instagram":
+            error_text = str(exc).lower()
             print(
-                "  Tip: Instagram often requires login cookies. "
-                "Retry with: --cookies chrome  (or edge / firefox)",
+                "  Tip: Export your logged-in Instagram cookies to cookies.txt using "
+                "a browser extension (e.g. 'Get cookies.txt LOCALLY') and run with "
+                "--cookies-file cookies.txt",
                 file=sys.stderr,
             )
+            print(
+                "  Tip: Reading cookies directly from Chrome often fails on Windows; "
+                "Firefox (--cookies firefox) usually works.",
+                file=sys.stderr,
+            )
+            if "empty media response" in error_text or "login" in error_text:
+                print(
+                    "  Tip: This post probably needs a logged-in session.",
+                    file=sys.stderr,
+                )
         return False
     except Exception as exc:
         print(f"\n✗ Unexpected error for {url}: {exc}", file=sys.stderr)
@@ -172,6 +220,17 @@ def download_url(url: str, *, args: argparse.Namespace) -> bool:
 def main(argv: list[str] | None = None) -> int:
     """Entry point. Returns 0 if all downloads succeed, 1 otherwise."""
     args = parse_args(argv)
+
+    if args.cookies_file is not None:
+        if not args.cookies_file.is_file():
+            print(f"✗ Cookies file not found: {args.cookies_file}", file=sys.stderr)
+            return 1
+        if args.cookies:
+            print("Using --cookies-file; ignoring --cookies.", file=sys.stderr)
+        warn_if_invalid_cookie_file(
+            args.cookies_file,
+            needs_instagram=any(detect_site(url) == "Instagram" for url in args.urls),
+        )
 
     succeeded = 0
     total = len(args.urls)
